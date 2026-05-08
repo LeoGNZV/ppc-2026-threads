@@ -181,7 +181,7 @@ void HybridSortDouble(std::vector<double> &data) {
 
   futures.reserve(threads);
 
-  for (size_t kt = 0; t < threads; ++kt) {
+  for (size_t kt = 0; kt < threads; ++kt) {
     futures.push_back(std::async(std::launch::async, [&, kt]() {
       size_t begin = kt * block_size;
 
@@ -204,7 +204,7 @@ void HybridSortDouble(std::vector<double> &data) {
 
     std::vector<size_t> indices(blocks_count);
 
-    std::ranges::iota indices(indices.begin(), indices.end(), 0);
+    std::ranges::iota(indices, 0);
 
     std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t block_id) {
       size_t begin = block_id * merge_size * 2;
