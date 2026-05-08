@@ -1,13 +1,12 @@
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/stl/include/ops_stl.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <execution>
 #include <limits>
-#include <numeric>
 #include <thread>
 #include <vector>
 
@@ -33,25 +32,35 @@ namespace {
 constexpr size_t kRadix = 256;
 constexpr size_t kCutoff = 1 << 18;
 
-inline uint64_t ToKey(double d) {
-  uint64_t x;
-  std::memcpy(&x, &d, sizeof(double));
-  return (x & (1ULL << 63)) ? ~x : (x | 0x8000000000000000ULL);
+/// double -> uint64_t
+uint64_t toKey(double d) {
+  uint64_t bits = 0;
+  std::memcpy(&bits, &d, sizeof(double));
+  if ((bits >> 63) != 0) {  // Отрицательное число
+    return ~bits;           // Инвертируем все биты
+  }  // Положительное число или ноль
+  return bits | 0x8000000000000000ULL;
 }
 
-inline double ToDouble(uint64_t x) {
-  x = (x & (1ULL << 63)) ? (x & ~0x8000000000000000ULL) : ~x;
-  double d;
-  std::memcpy(&d, &x, sizeof(double));
-  return d;
+// uint64_t -> double
+double toDouble(uint64_t bits) {
+  if ((bits >> 63) != 0) {           // Если старший бит установлен (было положительное)
+    bits &= ~0x8000000000000000ULL;  // Убираем старший бит
+  } else {                           // Если старший бит не установлен (было отрицательное число)
+    bits = ~bits;                    // Инвертируем все биты обратно
+  }
+
+  double result = 0.0;
+  std::memcpy(&result, &bits, sizeof(double));
+  return result;
 }
 
 size_t NextPow2(size_t n) {
-  size_t p = 1;
-  while (p < n) {
-    p <<= 1;
+  size_t kp = 1;
+  while (kp < n) {
+    kp <<= 1;
   }
-  return p;
+  return kp;
 }
 
 thread_local std::vector<uint64_t> tl_a;
@@ -67,31 +76,31 @@ void Radix(std::vector<double> &a, size_t l, size_t r) {
   tl_b.resize(n);
 
   for (size_t i = 0; i < n; ++i) {
-    tl_a[i] = ToKey(a[l + i]);
+    tl_a[i] = toKey(a[l + i]);
   }
 
-  for (int p = 0; p < 8; ++p) {
-    size_t cnt[kRadix] = {};
-    int shift = p * 8;
+  for (int kp = 0; kp < 8; ++kp) {
+    std::array<size_t, kRadix> cnt{};
+    int shift = kp * 8;
 
     for (size_t i = 0; i < n; ++i) {
-      cnt[(tl_a[i] >> shift) & 0xFF]++;
+      cnt.at((tl_a[i] >> shift) & 0xFF)++;
     }
 
     for (size_t i = 1; i < kRadix; ++i) {
-      cnt[i] += cnt[i - 1];
+      cnt.at(i) += cnt.at(i - 1);
     }
 
-    for (int i = (int)n - 1; i >= 0; --i) {
+    for (int i = static_cast<int>(n) - 1; i >= 0; --i) {
       uint8_t b = (tl_a[i] >> shift) & 0xFF;
-      tl_b[--cnt[b]] = tl_a[i];
+      tl_b.at(--cnt.at(b)) = tl_a[i];
     }
 
     tl_a.swap(tl_b);
   }
 
   for (size_t i = 0; i < n; ++i) {
-    a[l + i] = ToDouble(tl_a[i]);
+    a[l + i] = toDouble(tl_a[i]);
   }
 }
 
@@ -135,8 +144,8 @@ void HybridSortDouble(std::vector<double> &a) {
 
   std::vector<std::thread> threads;
 
-  for (size_t t = 0; t < hw; ++t) {
-    size_t l = t * chunk;
+  for (size_t kt = 0; kt < hw; ++kt) {
+    size_t l = kt * chunk;
     if (l >= n) {
       break;
     }
