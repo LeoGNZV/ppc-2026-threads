@@ -1,6 +1,7 @@
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/stl/include/ops_stl.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +9,9 @@
 #include <execution>
 #include <future>
 #include <limits>
+#include <numeric>
+#include <ranges>
+#include <thread>
 #include <vector>
 
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/common/include/common.hpp"
@@ -64,26 +68,26 @@ void RadixSortDouble(std::vector<double> &data, size_t begin, size_t end) {
     keys[i] = DoubleToSortableInt(data[begin + i]);
   }
 
-  constexpr int radix = 256;
+  constexpr int kRadix = 256;
 
   std::vector<uint64_t> temp_keys(size);
 
   for (int pass = 0; pass < 8; ++pass) {
-    std::array<size_t, radix> count{};
+    std::array<size_t, kRadix> count{};
 
     int shift = pass * 8;
 
     for (uint64_t key : keys) {
-      count[(key >> shift) & 0xFF]++;
+      count.at((key >> shift) & 0xFF)++;
     }
 
-    for (int i = 1; i < radix; ++i) {
-      count[i] += count[i - 1];
+    for (int i = 1; i < kRadix; ++i) {
+      count.at(i) += count.at(i - 1);
     }
 
     for (int i = static_cast<int>(size) - 1; i >= 0; --i) {
       uint8_t byte = (keys[i] >> shift) & 0xFF;
-      temp_keys[--count[byte]] = keys[i];
+      temp_keys[--count.at(byte)] = keys[i];
     }
 
     keys.swap(temp_keys);
@@ -177,9 +181,9 @@ void HybridSortDouble(std::vector<double> &data) {
 
   futures.reserve(threads);
 
-  for (size_t t = 0; t < threads; ++t) {
-    futures.push_back(std::async(std::launch::async, [&, t]() {
-      size_t begin = t * block_size;
+  for (size_t kt = 0; t < threads; ++kt) {
+    futures.push_back(std::async(std::launch::async, [&, kt]() {
+      size_t begin = kt * block_size;
 
       size_t end = std::min(begin + block_size, new_size);
 
@@ -200,7 +204,7 @@ void HybridSortDouble(std::vector<double> &data) {
 
     std::vector<size_t> indices(blocks_count);
 
-    std::iota(indices.begin(), indices.end(), 0);
+    std::ranges::iota indices(indices.begin(), indices.end(), 0);
 
     std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t block_id) {
       size_t begin = block_id * merge_size * 2;

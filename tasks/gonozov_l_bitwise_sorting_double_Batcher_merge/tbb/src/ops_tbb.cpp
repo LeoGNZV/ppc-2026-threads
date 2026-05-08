@@ -67,12 +67,12 @@ void RadixSortDouble(std::vector<double> &data, size_t begin, size_t end) {
     keys[i] = DoubleToSortableInt(data[begin + i]);
   }
 
-  constexpr int radix = 256;
+  constexpr int kRadix = 256;
 
   std::vector<uint64_t> temp_keys(size);
 
   for (int pass = 0; pass < 8; ++pass) {
-    std::vector<size_t> count(radix, 0);
+    std::vector<size_t> count(kRadix, 0);
 
     int shift = pass * 8;
 
@@ -80,7 +80,7 @@ void RadixSortDouble(std::vector<double> &data, size_t begin, size_t end) {
       count[(key >> shift) & 0xFF]++;
     }
 
-    for (int i = 1; i < radix; ++i) {
+    for (int i = 1; i < kRadix; ++i) {
       count[i] += count[i - 1];
     }
 
@@ -135,7 +135,7 @@ void HybridSortDouble(std::vector<double> &data) {
   size_t block_size = (new_size + threads - 1) / threads;
 
   // parallel radix sort
-  oneapi::tbb::parallel_for(size_t(0), threads, [&](size_t t) {
+  oneapi::tbb::parallel_for(static_cast<size_t>(0), threads, [&](size_t t) {
     size_t begin = t * block_size;
 
     size_t end = std::min(begin + block_size, new_size);
@@ -147,10 +147,10 @@ void HybridSortDouble(std::vector<double> &data) {
 
   // parallel batcher merge tree
   for (size_t merge_size = block_size; merge_size < new_size; merge_size *= 2) {
-    oneapi::tbb::parallel_for(size_t(0), new_size, merge_size * 2,
+    oneapi::tbb::parallel_for(static_cast<size_t>(0), new_size, merge_size * 2,
 
                               [&](size_t i) {
-      size_t end = std::min(i + merge_size * 2, new_size);
+      size_t end = std::min(i + (merge_size * 2), new_size);
 
       MergingHalves(data, i, end - i);
     });
