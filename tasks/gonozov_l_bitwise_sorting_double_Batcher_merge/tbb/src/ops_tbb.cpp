@@ -136,9 +136,12 @@ void HybridSortDouble(std::vector<double> &data) {
   for (size_t merge_size = block_size; merge_size < new_size; merge_size *= 2) {
     oneapi::tbb::parallel_for(static_cast<size_t>(0), new_size, merge_size * 2, [&](size_t i) {
       size_t mid = std::min(i + merge_size, new_size);
-      size_t end = std::min(i + merge_size * 2, new_size);
+      size_t end = std::min(i + (merge_size * 2), new_size);
 
-      std::inplace_merge(data.begin() + i, data.begin() + mid, data.begin() + end);
+      using diff_t = std::vector<double>::difference_type;
+
+      std::inplace_merge(data.begin() + static_cast<diff_t>(i), data.begin() + static_cast<diff_t>(mid),
+                         data.begin() + static_cast<diff_t>(end));
     });
   }
 
