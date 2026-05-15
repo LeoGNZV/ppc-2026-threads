@@ -29,9 +29,6 @@ bool GonozovLBitSortBatcherMergeSTL::PreProcessingImpl() {
 
 namespace {
 
-constexpr size_t kRadix = 256;
-constexpr size_t kCutoff = 1 << 18;
-
 uint64_t DoubleToSortableInt(double d) {
   uint64_t bits = 0;
   std::memcpy(&bits, &d, sizeof(double));
@@ -108,10 +105,7 @@ void SortChunk(double *data, size_t start, size_t size) {
 void MergeSortedChunks(double *data, size_t total_size, size_t chunk_size) {
   for (size_t current_size = chunk_size; current_size < total_size; current_size *= 2) {
     for (size_t left = 0; left < total_size; left += current_size * 2) {
-      std::inplace_merge(
-          data + left,
-          data + left + current_size,
-          data + left + current_size * 2);
+      std::inplace_merge(data + left, data + left + current_size, data + left + current_size * 2);
     }
   }
 }
@@ -142,8 +136,7 @@ void ParallelHybridSort(std::vector<double> &data) {
 
   size_t chunks_count = 1;
 
-  while (chunks_count * 2 <= static_cast<size_t>(threads_count) &&
-         chunks_count * 2 <= padded_size) {
+  while (chunks_count * 2 <= static_cast<size_t>(threads_count) && chunks_count * 2 <= padded_size) {
     chunks_count *= 2;
   }
 
@@ -155,9 +148,7 @@ void ParallelHybridSort(std::vector<double> &data) {
   threads.reserve(chunks_count);
 
   for (size_t i = 0; i < chunks_count; ++i) {
-    threads.emplace_back([raw_data, i, chunk_size]() {
-      SortChunk(raw_data, i * chunk_size, chunk_size);
-    });
+    threads.emplace_back([raw_data, i, chunk_size]() { SortChunk(raw_data, i * chunk_size, chunk_size); });
   }
 
   for (auto &thread : threads) {
@@ -169,105 +160,7 @@ void ParallelHybridSort(std::vector<double> &data) {
   data.resize(original_size);
 }
 
-// uint64_t DoubleToUint(double d) {
-//   uint64_t u = 0;
-//   std::memcpy(&u, &d, sizeof(double));
-//   if ((u & 0x8000000000000000ULL) != 0) {
-//     u = ~u;
-//   } else {
-//     u |= 0x8000000000000000ULL;
-//   }
-//   return u;
-// }
-
-// double UintToDouble(uint64_t u) {
-//   if ((u & 0x8000000000000000ULL) != 0) {
-//     u &= ~0x8000000000000000ULL;
-//   } else {
-//     u = ~u;
-//   }
-//   double d = 0.0;
-//   std::memcpy(&d, &u, sizeof(double));
-//   return d;
-// }
-
-// void RadixSortDouble(std::vector<double> &arr) {
-//   if (arr.empty()) {
-//     return;
-//   }
-
-//   std::vector<uint64_t> uarr(arr.size());
-//   for (size_t i = 0; i < arr.size(); ++i) {
-//     uarr[i] = DoubleToUint(arr[i]);
-//   }
-
-//   std::vector<uint64_t> temp(uarr.size());
-//   for (size_t byte = 0; byte < 8; ++byte) {
-//   std::array<size_t, 256> count{};
-
-//   for (uint64_t val : uarr) {
-//     count[(val >> (byte * 8)) & 0xFF]++;
-//   }
-
-//   for (size_t i = 1; i < 256; ++i) {
-//     count[i] += count[i - 1];
-//   }
-
-//   for (size_t i = uarr.size(); i-- > 0;) {
-//     temp[--count[(uarr[i] >> (byte * 8)) & 0xFF]] = uarr[i];
-//   }
-
-//   uarr = temp;
-// }
-
-//   for (size_t i = 0; i < arr.size(); ++i) {
-//     arr[i] = UintToDouble(uarr[i]);
-//   }
-// }
-
-// void ProcessChunkSTL(double *raw_data, int chunk_idx, size_t chunk_size) {
-//   size_t start_idx = static_cast<size_t>(chunk_idx) * chunk_size;
-
-//   std::vector<double> local_arr(chunk_size);
-//   double *local_raw = local_arr.data();
-
-//   for (size_t j = 0; j < chunk_size; ++j) {
-//     local_raw[j] = raw_data[start_idx + j];
-//   }
-
-//   RadixSortDouble(local_arr);
-
-//   for (size_t j = 0; j < chunk_size; ++j) {
-//     raw_data[start_idx + j] = local_raw[j];
-//   }
-// }
-
-// void ExecuteSTLSort(double *raw_data, size_t pow2, size_t chunk_size, int num_chunks_int) {
-//   std::vector<std::thread> threads;
-//   threads.reserve(num_chunks_int);
-
-//   // 1. Параллельно сортируем каждый блок, раздавая задачи сырым std::thread
-//   for (int i = 0; i < num_chunks_int; ++i) {
-//     threads.emplace_back([raw_data, i, chunk_size]() { ProcessChunkSTL(raw_data, i, chunk_size); });
-//   }
-
-//   for (auto &t : threads) {
-//     t.join();
-//   }
-//   threads.clear();
-
-// // 2. Параллельное слияние отсортированных блоков
-// for (size_t size = chunk_size; size < pow2; size *= 2) {
-//   for (size_t start = 0; start < pow2; start += 2 * size) {
-//     std::inplace_merge(
-//         raw_data + start,
-//         raw_data + start + size,
-//         raw_data + start + 2 * size);
-//   }
-// }
-// }
-
-}// namespace
+}  // namespace
 
 bool GonozovLBitSortBatcherMergeSTL::RunImpl() {
   std::vector<double> array = GetInput();
@@ -275,37 +168,7 @@ bool GonozovLBitSortBatcherMergeSTL::RunImpl() {
   ParallelHybridSort(array);
 
   GetOutput() = array;
-  // size_t original_size = array.size();
-  // size_t pow2 = 1;
-  // while (pow2 < original_size) {
-  //   pow2 *= 2;
-  // }
 
-  // if (pow2 > original_size) {
-  //   array.resize(pow2, std::numeric_limits<double>::infinity());
-  // }
-
-  // int num_threads = ppc::util::GetNumThreads();
-  // if (num_threads <= 0) {
-  //   num_threads = 1;
-  // }
-
-  // size_t num_chunks = 1;
-  // while (num_chunks * 2 <= static_cast<size_t>(num_threads) && num_chunks * 2 <= pow2) {
-  //   num_chunks *= 2;
-  // }
-
-  // size_t chunk_size = pow2 / num_chunks;
-  // double *raw_data = array.data();
-  // int num_chunks_int = static_cast<int>(num_chunks);
-
-  // ExecuteSTLSort(raw_data, pow2, chunk_size, num_chunks_int);
-
-  // if (pow2 > original_size) {
-  //   array.resize(original_size);
-  // }
-
-  // GetOutput() = array;
   return true;
 }
 

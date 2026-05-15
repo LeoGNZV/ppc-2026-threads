@@ -10,8 +10,8 @@
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/common/include/common.hpp"
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/omp/include/ops_omp.hpp"
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/seq/include/ops_seq.hpp"
-#include "gonozov_l_bitwise_sorting_double_Batcher_merge/tbb/include/ops_tbb.hpp"
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/stl/include/ops_stl.hpp"
+#include "gonozov_l_bitwise_sorting_double_Batcher_merge/tbb/include/ops_tbb.hpp"
 #include "util/include/func_test_util.hpp"
 #include "util/include/util.hpp"
 
