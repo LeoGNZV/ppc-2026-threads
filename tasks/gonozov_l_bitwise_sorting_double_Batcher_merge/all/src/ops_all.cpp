@@ -4,11 +4,9 @@
 #include <tbb/tbb.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <thread>
 #include <vector>
 
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/common/include/common.hpp"
@@ -63,10 +61,10 @@ void RadixSortDouble(std::vector<double> &data) {
 
   std::vector<uint64_t> temp(keys.size());
 
-  constexpr int radix = 256;
+  constexpr int kRadix = 256;
 
   for (int pass = 0; pass < 8; ++pass) {
-    std::vector<int> count(radix, 0);
+    std::vector<int> count(kRadix, 0);
 
     int shift = pass * 8;
 
@@ -74,7 +72,7 @@ void RadixSortDouble(std::vector<double> &data) {
       count[(key >> shift) & 0xFF]++;
     }
 
-    for (int i = 1; i < radix; ++i) {
+    for (int i = 1; i < kRadix; ++i) {
       count[i] += count[i - 1];
     }
 
@@ -124,7 +122,7 @@ void SortChunkALL(double *raw_data, int chunk_idx, size_t chunk_size) {
 
   RadixSortDouble(local_arr);
 
-  std::copy(local_arr.begin(), local_arr.end(), raw_data + start_idx);
+  std::ranges::copy(local_arr.begin(), local_arr.end(), raw_data + start_idx);
 }
 
 }  // namespace
@@ -171,6 +169,7 @@ bool GonozovLBitSortBatcherMergeALL::RunImpl() {
   }
 
   size_t chunk_size = new_size / num_chunks;
+  chunk_size = std::max<size_t>(1, chunk_size);
 
   double *raw_data = local_data_.data();
 
@@ -179,7 +178,7 @@ bool GonozovLBitSortBatcherMergeALL::RunImpl() {
   tbb::parallel_for(0, num_chunks_int, [&](int i) { SortChunkALL(raw_data, i, chunk_size); });
 
   for (size_t size = chunk_size; size < new_size; size *= 2) {
-    int merges_count = static_cast<int>(new_size / (size * 2));
+    int merges_count = static_cast<int>(new_size / (size * 2 + 0.0000000001));
 
     tbb::parallel_for(0, merges_count,
                       [&](int i) { OddEvenMergeIterative(raw_data, static_cast<size_t>(i) * 2 * size, 2 * size); });
@@ -189,6 +188,7 @@ bool GonozovLBitSortBatcherMergeALL::RunImpl() {
     local_data_.resize(n);
   }
 
+  MPI_Barrier(MPI_COMM_WORLD);
   return true;
 }
 

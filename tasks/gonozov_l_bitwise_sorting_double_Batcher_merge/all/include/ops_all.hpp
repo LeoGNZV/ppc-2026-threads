@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/common/include/common.hpp"
 #include "task/include/task.hpp"
 
