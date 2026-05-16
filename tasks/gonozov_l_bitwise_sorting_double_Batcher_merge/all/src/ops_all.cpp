@@ -50,7 +50,7 @@ size_t NextPowerOfTwo(size_t n) {
   return power;
 }
 
-void RadixSortDouble(std::vector<double>& data) {
+void RadixSortDouble(std::vector<double> &data) {
   if (data.empty()) {
     return;
   }
@@ -67,7 +67,7 @@ void RadixSortDouble(std::vector<double>& data) {
 
   for (int pass = 0; pass < 8; ++pass) {
     std::vector<int> count(radix, 0);
-  
+
     int shift = pass * 8;
 
     for (uint64_t key : keys) {
@@ -91,7 +91,7 @@ void RadixSortDouble(std::vector<double>& data) {
   }
 }
 
-void CompareExchangeBlocks(double* arr, size_t i, size_t step) {
+void CompareExchangeBlocks(double *arr, size_t i, size_t step) {
   for (size_t k = 0; k < step; ++k) {
     if (arr[i + k] > arr[i + k + step]) {
       std::swap(arr[i + k], arr[i + k + step]);
@@ -99,7 +99,7 @@ void CompareExchangeBlocks(double* arr, size_t i, size_t step) {
   }
 }
 
-void OddEvenMergeIterative(double* arr, size_t start, size_t n) {
+void OddEvenMergeIterative(double *arr, size_t start, size_t n) {
   if (n <= 1) {
     return;
   }
@@ -117,28 +117,19 @@ void OddEvenMergeIterative(double* arr, size_t start, size_t n) {
   }
 }
 
-void SortChunkALL(double* raw_data,
-                     int chunk_idx,
-                     size_t chunk_size) {
-  size_t start_idx =
-      static_cast<size_t>(chunk_idx) * chunk_size;
+void SortChunkALL(double *raw_data, int chunk_idx, size_t chunk_size) {
+  size_t start_idx = static_cast<size_t>(chunk_idx) * chunk_size;
 
-  std::vector<double> local_arr(
-      raw_data + start_idx,
-      raw_data + start_idx + chunk_size);
+  std::vector<double> local_arr(raw_data + start_idx, raw_data + start_idx + chunk_size);
 
   RadixSortDouble(local_arr);
 
-  std::copy(
-      local_arr.begin(),
-      local_arr.end(),
-      raw_data + start_idx);
+  std::copy(local_arr.begin(), local_arr.end(), raw_data + start_idx);
 }
 
 }  // namespace
 
-GonozovLBitSortBatcherMergeALL::
-    GonozovLBitSortBatcherMergeALL(const InType& in) {
+GonozovLBitSortBatcherMergeALL::GonozovLBitSortBatcherMergeALL(const InType &in) {
   SetTypeOfTask(GetStaticTypeOfTask());
 
   GetInput() = in;
@@ -164,9 +155,7 @@ bool GonozovLBitSortBatcherMergeALL::RunImpl() {
   size_t new_size = NextPowerOfTwo(n);
 
   if (new_size > n) {
-    local_data_.resize(
-        new_size,
-        std::numeric_limits<double>::infinity());
+    local_data_.resize(new_size, std::numeric_limits<double>::infinity());
   }
 
   int num_threads = ppc::util::GetNumThreads();
@@ -177,45 +166,23 @@ bool GonozovLBitSortBatcherMergeALL::RunImpl() {
 
   size_t num_chunks = 1;
 
-  while (num_chunks * 2 <=
-             static_cast<size_t>(num_threads) &&
-         num_chunks * 2 <= new_size) {
+  while (num_chunks * 2 <= static_cast<size_t>(num_threads) && num_chunks * 2 <= new_size) {
     num_chunks *= 2;
   }
 
   size_t chunk_size = new_size / num_chunks;
 
-  double* raw_data = local_data_.data();
+  double *raw_data = local_data_.data();
 
-  int num_chunks_int =
-      static_cast<int>(num_chunks);
+  int num_chunks_int = static_cast<int>(num_chunks);
 
-  tbb::parallel_for(
-      0,
-      num_chunks_int,
-      [&](int i) {
-        SortChunkALL(
-            raw_data,
-            i,
-            chunk_size);
-      });
+  tbb::parallel_for(0, num_chunks_int, [&](int i) { SortChunkALL(raw_data, i, chunk_size); });
 
-  for (size_t size = chunk_size;
-       size < new_size;
-       size *= 2) {
-    int merges_count =
-        static_cast<int>(
-            new_size / (size * 2));
+  for (size_t size = chunk_size; size < new_size; size *= 2) {
+    int merges_count = static_cast<int>(new_size / (size * 2));
 
-    tbb::parallel_for(
-        0,
-        merges_count,
-        [&](int i) {
-          OddEvenMergeIterative(
-              raw_data,
-              static_cast<size_t>(i) * 2 * size,
-              2 * size);
-        });
+    tbb::parallel_for(0, merges_count,
+                      [&](int i) { OddEvenMergeIterative(raw_data, static_cast<size_t>(i) * 2 * size, 2 * size); });
   }
 
   if (new_size > n) {

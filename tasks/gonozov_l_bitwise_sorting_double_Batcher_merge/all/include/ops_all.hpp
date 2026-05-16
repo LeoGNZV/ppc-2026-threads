@@ -3,7 +3,7 @@
 #include "gonozov_l_bitwise_sorting_double_Batcher_merge/common/include/common.hpp"
 #include "task/include/task.hpp"
 
-namespace  gonozov_l_bitwise_sorting_double_batcher_merge {
+namespace gonozov_l_bitwise_sorting_double_batcher_merge {
 
 class GonozovLBitSortBatcherMergeALL : public BaseTask {
  public:
@@ -21,4 +21,4 @@ class GonozovLBitSortBatcherMergeALL : public BaseTask {
   std::vector<double> local_data_;
 };
 
-}  // namespace namespace gonozov_l_bitwise_sorting_double_batcher_merge
+}  // namespace gonozov_l_bitwise_sorting_double_batcher_merge
