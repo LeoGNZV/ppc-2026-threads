@@ -66,15 +66,15 @@ inline size_t NextPowerOfTwo(size_t n) {
 
 constexpr size_t kRadix = 256;
 
-void RadixSortDoubleChunk(std::vector<uint64_t>& data, size_t start, size_t end) {
+void RadixSortDoubleChunk(std::vector<uint64_t> &data, size_t start, size_t end) {
   size_t size = end - start;
   if (size <= 1) {
     return;
   }
 
   std::vector<uint64_t> temp(size);
-  uint64_t* keys = data.data() + start;
-  uint64_t* temp_ptr = temp.data();
+  uint64_t *keys = data.data() + start;
+  uint64_t *temp_ptr = temp.data();
 
   for (int pass = 0; pass < 8; ++pass) {
     std::array<size_t, kRadix> count{};
@@ -100,7 +100,7 @@ void RadixSortDoubleChunk(std::vector<uint64_t>& data, size_t start, size_t end)
   }
 }
 
-void CompareExchangeBlocks(uint64_t* arr, size_t i, size_t step) {
+void CompareExchangeBlocks(uint64_t *arr, size_t i, size_t step) {
   for (size_t k = 0; k < step; ++k) {
     if (arr[i + k] > arr[i + k + step]) {
       std::swap(arr[i + k], arr[i + k + step]);
@@ -108,7 +108,7 @@ void CompareExchangeBlocks(uint64_t* arr, size_t i, size_t step) {
   }
 }
 
-void OddEvenMergeIterative(uint64_t* arr, size_t start, size_t n) {
+void OddEvenMergeIterative(uint64_t *arr, size_t start, size_t n) {
   if (n <= 1) {
     return;
   }
@@ -124,38 +124,33 @@ void OddEvenMergeIterative(uint64_t* arr, size_t start, size_t n) {
   }
 }
 
-void ProcessChunkTBB(std::vector<uint64_t>& keys, int chunk_idx, size_t chunk_size) {
+void ProcessChunkTBB(std::vector<uint64_t> &keys, int chunk_idx, size_t chunk_size) {
   size_t start_idx = static_cast<size_t>(chunk_idx) * chunk_size;
   RadixSortDoubleChunk(keys, start_idx, start_idx + chunk_size);
 }
 
-void TBBSort(std::vector<uint64_t>& keys, size_t pow2, size_t chunk_size, 
-                    int num_chunks_int, int num_threads) {
+void TBBSort(std::vector<uint64_t> &keys, size_t pow2, size_t chunk_size, int num_chunks_int, int num_threads) {
   tbb::task_arena arena(num_threads);
   arena.execute([&]() {
-    tbb::parallel_for(tbb::blocked_range<int>(0, num_chunks_int), 
-      [&](const tbb::blocked_range<int>& r) {
-        for (int i = r.begin(); i != r.end(); ++i) {
-          ProcessChunkTBB(keys, i, chunk_size);
-        }
-      });
+    tbb::parallel_for(tbb::blocked_range<int>(0, num_chunks_int), [&](const tbb::blocked_range<int> &r) {
+      for (int i = r.begin(); i != r.end(); ++i) {
+        ProcessChunkTBB(keys, i, chunk_size);
+      }
+    });
 
     for (size_t size = chunk_size; size < pow2; size *= 2) {
       int merges_count = static_cast<int>(pow2 / (size * 2));
-      
-      tbb::parallel_for(tbb::blocked_range<int>(0, merges_count),
-        [&](const tbb::blocked_range<int>& r) {
-          for (int i = r.begin(); i != r.end(); ++i) {
-            OddEvenMergeIterative(keys.data(), 
-                                  static_cast<size_t>(i) * 2 * size, 
-                                  2 * size);
-          }
-        });
+
+      tbb::parallel_for(tbb::blocked_range<int>(0, merges_count), [&](const tbb::blocked_range<int> &r) {
+        for (int i = r.begin(); i != r.end(); ++i) {
+          OddEvenMergeIterative(keys.data(), static_cast<size_t>(i) * 2 * size, 2 * size);
+        }
+      });
     }
   });
 }
 
-void HybridSort(std::vector<double>& arr) {
+void HybridSort(std::vector<double> &arr) {
   if (arr.empty()) {
     return;
   }
