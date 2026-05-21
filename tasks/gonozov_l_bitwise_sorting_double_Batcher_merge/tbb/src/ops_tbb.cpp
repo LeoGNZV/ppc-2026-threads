@@ -54,105 +54,150 @@ double SortableIntToDouble(uint64_t bits) {
   return result;
 }
 
-void RadixSortDouble(std::vector<double> &data, size_t begin, size_t end) {
-  if (end <= begin + 1) {
-    return;
-  }
-
-  size_t size = end - begin;
-
-  std::vector<uint64_t> keys(size);
-
-  for (size_t i = 0; i < size; ++i) {
-    keys[i] = DoubleToSortableInt(data[begin + i]);
-  }
-
-  constexpr int kRadix = 256;
-
-  std::vector<uint64_t> temp_keys(size);
-
-  for (int pass = 0; pass < 8; ++pass) {
-    std::vector<size_t> count(kRadix, 0);
-
-    int shift = pass * 8;
-
-    for (uint64_t key : keys) {
-      count[(key >> shift) & 0xFF]++;
-    }
-
-    for (int i = 1; i < kRadix; ++i) {
-      count[i] += count[i - 1];
-    }
-
-    for (int i = static_cast<int>(size) - 1; i >= 0; --i) {
-      uint8_t byte = (keys[i] >> shift) & 0xFF;
-      temp_keys[--count[byte]] = keys[i];
-    }
-
-    keys.swap(temp_keys);
-  }
-
-  for (size_t i = 0; i < size; ++i) {
-    data[begin + i] = SortableIntToDouble(keys[i]);
-  }
-}
-
-// Нахождение ближайшей степени двойки, большей или равной n
-size_t NextPowerOfTwo(size_t n) {
+inline size_t NextPowerOfTwo(size_t n) {
   size_t power = 1;
+
   while (power < n) {
     power <<= 1;
   }
+
   return power;
 }
 
-void HybridSortDouble(std::vector<double> &data) {
-  if (data.size() <= 1) {
+constexpr size_t kRadix = 256;
+
+void RadixSortDoubleChunk(std::vector<uint64_t>& data, size_t start, size_t end) {
+  size_t size = end - start;
+  if (size <= 1) {
     return;
   }
 
-  size_t original_size = data.size();
+  std::vector<uint64_t> temp(size);
+  uint64_t* keys = data.data() + start;
+  uint64_t* temp_ptr = temp.data();
 
-  size_t new_size = NextPowerOfTwo(original_size);
+  for (int pass = 0; pass < 8; ++pass) {
+    std::array<size_t, kRadix> count{};
+    int shift = pass * 8;
 
-  data.resize(new_size, std::numeric_limits<double>::infinity());
-
-  size_t threads = oneapi::tbb::this_task_arena::max_concurrency();
-
-  size_t block_size = NextPowerOfTwo((new_size + threads - 1) / threads);
-
-  // parallel radix sort
-  oneapi::tbb::parallel_for(static_cast<size_t>(0), threads, [&](size_t t) {
-    size_t begin = t * block_size;
-
-    size_t end = std::min(begin + block_size, new_size);
-
-    if (begin < end) {
-      RadixSortDouble(data, begin, end);
+    for (size_t i = 0; i < size; ++i) {
+      ++count[(keys[i] >> shift) & 0xFF];
     }
-  });
 
-  // parallel batcher merge tree
-  for (size_t merge_size = block_size; merge_size < new_size; merge_size *= 2) {
-    oneapi::tbb::parallel_for(static_cast<size_t>(0), new_size, merge_size * 2, [&](size_t i) {
-      size_t mid = std::min(i + merge_size, new_size);
-      size_t end = std::min(i + (merge_size * 2), new_size);
+    size_t sum = 0;
+    for (size_t i = 0; i < kRadix; ++i) {
+      size_t c = count[i];
+      count[i] = sum;
+      sum += c;
+    }
 
-      using DiffT = std::vector<double>::difference_type;
+    for (size_t i = 0; i < size; ++i) {
+      uint8_t byte = (keys[i] >> shift) & 0xFF;
+      temp_ptr[count[byte]++] = keys[i];
+    }
 
-      std::inplace_merge(data.begin() + static_cast<DiffT>(i), data.begin() + static_cast<DiffT>(mid),
-                         data.begin() + static_cast<DiffT>(end));
-    });
+    std::memcpy(keys, temp_ptr, size * sizeof(uint64_t));
+  }
+}
+
+void CompareExchangeBlocks(uint64_t* arr, size_t i, size_t step) {
+  for (size_t k = 0; k < step; ++k) {
+    if (arr[i + k] > arr[i + k + step]) {
+      std::swap(arr[i + k], arr[i + k + step]);
+    }
+  }
+}
+
+void OddEvenMergeIterative(uint64_t* arr, size_t start, size_t n) {
+  if (n <= 1) {
+    return;
   }
 
-  data.resize(original_size);
+  size_t step = n / 2;
+  CompareExchangeBlocks(arr, start, step);
+
+  step /= 2;
+  for (; step > 0; step /= 2) {
+    for (size_t i = step; i < n - step; i += step * 2) {
+      CompareExchangeBlocks(arr, start + i, step);
+    }
+  }
+}
+
+void ProcessChunkTBB(std::vector<uint64_t>& keys, int chunk_idx, size_t chunk_size) {
+  size_t start_idx = static_cast<size_t>(chunk_idx) * chunk_size;
+  RadixSortDoubleChunk(keys, start_idx, start_idx + chunk_size);
+}
+
+void TBBSort(std::vector<uint64_t>& keys, size_t pow2, size_t chunk_size, 
+                    int num_chunks_int, int num_threads) {
+  tbb::task_arena arena(num_threads);
+  arena.execute([&]() {
+    tbb::parallel_for(tbb::blocked_range<int>(0, num_chunks_int), 
+      [&](const tbb::blocked_range<int>& r) {
+        for (int i = r.begin(); i != r.end(); ++i) {
+          ProcessChunkTBB(keys, i, chunk_size);
+        }
+      });
+
+    for (size_t size = chunk_size; size < pow2; size *= 2) {
+      int merges_count = static_cast<int>(pow2 / (size * 2));
+      
+      tbb::parallel_for(tbb::blocked_range<int>(0, merges_count),
+        [&](const tbb::blocked_range<int>& r) {
+          for (int i = r.begin(); i != r.end(); ++i) {
+            OddEvenMergeIterative(keys.data(), 
+                                  static_cast<size_t>(i) * 2 * size, 
+                                  2 * size);
+          }
+        });
+    }
+  });
+}
+
+void HybridSort(std::vector<double>& arr) {
+  if (arr.empty()) {
+    return;
+  }
+
+  size_t original_size = arr.size();
+  size_t pow2 = NextPowerOfTwo(original_size);
+
+  std::vector<uint64_t> keys(pow2);
+  for (size_t i = 0; i < original_size; ++i) {
+    keys[i] = DoubleToSortableInt(arr[i]);
+  }
+
+  uint64_t max_key = DoubleToSortableInt(std::numeric_limits<double>::max());
+  for (size_t i = original_size; i < pow2; ++i) {
+    keys[i] = max_key;
+  }
+
+  int num_threads = ppc::util::GetNumThreads();
+  if (num_threads <= 0) {
+    num_threads = 1;
+  }
+
+  size_t num_chunks = 1;
+  while (num_chunks * 2 <= static_cast<size_t>(num_threads) && num_chunks * 2 <= pow2) {
+    num_chunks *= 2;
+  }
+
+  size_t chunk_size = pow2 / num_chunks;
+  int num_chunks_int = static_cast<int>(num_chunks);
+
+  TBBSort(keys, pow2, chunk_size, num_chunks_int, num_threads);
+
+  for (size_t i = 0; i < original_size; ++i) {
+    arr[i] = SortableIntToDouble(keys[i]);
+  }
 }
 
 }  // namespace
 
 bool GonozovLBitSortBatcherMergeTBB::RunImpl() {
   std::vector<double> array = GetInput();
-  HybridSortDouble(array);
+  HybridSort(array);
   GetOutput() = array;
   return true;
 }
