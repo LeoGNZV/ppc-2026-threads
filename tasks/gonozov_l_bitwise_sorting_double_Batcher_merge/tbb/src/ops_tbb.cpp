@@ -180,7 +180,6 @@ void HybridSort(std::vector<double> &arr) {
 
   size_t chunk_size = pow2 / num_chunks;
   int num_chunks_int = static_cast<int>(num_chunks);
-
   TBBSort(keys, pow2, chunk_size, num_chunks_int, num_threads);
 
   for (size_t i = 0; i < original_size; ++i) {
